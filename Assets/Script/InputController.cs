@@ -48,6 +48,9 @@ public class InputController : MonoBehaviour
     public void ReactToRelease(KeyCode _keyCode)
     {
         m_isDrawingMesh = false;
+        m_listOfNormal = new List<Vector3>();
+        m_listOfPosition = new List<Vector3>();
+        m_previouslyHit = false;
     }
 
     private void Update()

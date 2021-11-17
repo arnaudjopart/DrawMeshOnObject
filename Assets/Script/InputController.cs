@@ -3,11 +3,14 @@ using System.Collections.Generic;
 using System.IO;
 using UnityEngine;
 using JPBotelho;
+using UnityEngine.Events;
+using Object = UnityEngine.Object;
 
 public class InputController : MonoBehaviour
 {
     public Camera m_camera;
     public LayerMask m_mask;
+    public LayerMask m_editMask;
 
     public Material m_material;
     
@@ -23,41 +26,95 @@ public class InputController : MonoBehaviour
 
     private CatmullRom m_currentSpline;
     private bool m_alreadyDrawingSpline;
-    private MeshShape m_shape;
+    //private MeshShape m_shape;
     private MeshFilter m_currentMeshFilter;
     private List<Vector3> m_listOfNormal = new List<Vector3>();
     public float m_width= .2f;
+    private List<IInteractable> m_interactableElements;
+    public GameObject m_interactableElementPrefab;
+    public static UnityEvent OnActivateEditModeEvent;
+    public static UnityEvent OnDeactivateEditModeEvent;
+    private bool m_isEditing;
+
+    private void Awake()
+    {
+        OnActivateEditModeEvent = new UnityEvent();
+        OnDeactivateEditModeEvent = new UnityEvent();
+    }
+
+    
 
     public void ReactToPress(KeyCode _keyCode)
     {
-        m_isDrawingMesh = true;
-        InitializeDraw();
+        if (_keyCode == KeyCode.Space)
+        {
+            m_isDrawingMesh = true;
+            InitializeDraw();
+        }
+
+        if (_keyCode == KeyCode.LeftCommand || _keyCode == KeyCode.LeftControl)
+        {
+            OnActivateEditModeEvent.Invoke();
+            m_isEditing = true;
+        }
+        
     }
 
     private void InitializeDraw()
     {
-        m_shape = new DiscShape(10,.2f);
-        
         var newObject = new GameObject("mesh");
         var mr = newObject.AddComponent<MeshRenderer>();
         mr.materials = new[] {m_material};
         m_currentMeshFilter = newObject.AddComponent<MeshFilter>();
-        
+        m_interactableElements = new List<IInteractable>();
+
     }
 
     public void ReactToRelease(KeyCode _keyCode)
     {
-        m_isDrawingMesh = false;
-        m_listOfNormal = new List<Vector3>();
-        m_listOfPosition = new List<Vector3>();
-        m_previouslyHit = false;
+        if (_keyCode == KeyCode.Space)
+        {
+            m_isDrawingMesh = false;
+            m_listOfNormal = new List<Vector3>();
+            m_listOfPosition = new List<Vector3>();
+            m_previouslyHit = false;
+        }
+        
+        if (_keyCode == KeyCode.LeftCommand || _keyCode == KeyCode.LeftControl)
+        {
+            OnDeactivateEditModeEvent.Invoke();
+            m_isEditing = false;
+        }
+
     }
 
     private void Update()
     {
+        var mousePosition = Input.mousePosition;
+        
+        if (m_isEditing)
+        {
+            var ray = m_camera.ScreenPointToRay(mousePosition);
+            DrawMesh();
+            if (Input.GetMouseButtonDown(0) == false) return;
+            
+            if (Physics.Raycast(ray, out var clickHit, 10,m_editMask))
+            {
+                var point = clickHit.point;
+                var colliders = Physics.OverlapSphere(point,.2f);
+                foreach (var nearbyCollider in colliders)
+                {
+                    var script = nearbyCollider.GetComponent<InteractablePlane>();
+                    if(script) script.Grow();
+                }
+            }
+            
+
+            
+        }
         if (m_isDrawingMesh)
         {
-            var mousePosition = Input.mousePosition;
+            
             
             var ray = m_camera.ScreenPointToRay(mousePosition);
             if (Physics.Raycast(ray, out var hit, 100, m_mask))
@@ -99,15 +156,15 @@ public class InputController : MonoBehaviour
     private void DrawMesh()
     {
         
-        if (m_alreadyDrawingSpline == false) return;
+        var shape = m_interactableElements[0].GetShape();
         var path = m_currentSpline.GetPoints();
-        
-        var verticesInShape = m_shape.m_vertices.Length;
+        UpdateShapes(path);
+        var verticesInShape = shape.m_vertices.Length;
         var nbSegments = path.Length - 1;
         var edgeLoops = path.Length;
 
         var nbVertices = verticesInShape * edgeLoops;
-        var triCount = m_shape.m_lines.Length * nbSegments;
+        var triCount = shape.m_lines.Length * nbSegments;
         var trianglesIndexCount = triCount * 3;
 
         var triangles = new int[trianglesIndexCount];
@@ -123,9 +180,9 @@ public class InputController : MonoBehaviour
             for (var j = 0; j < verticesInShape; j++)
             {
                 var id = offset + j;
-                var rotation = Quaternion.LookRotation(path[i].tangent, path[i].normal*-1);
-                vertices[id] = path[i].position + rotation * m_shape.m_vertices[j];
-                normals[id] = rotation* m_shape.m_normals[j];
+                
+                vertices[id] = m_interactableElements[i].GetVertexPosition(j);
+                normals[id] = m_interactableElements[i].GetNormal(j);
                 uvs[id] = Vector2.zero;
             }
         }
@@ -135,12 +192,12 @@ public class InputController : MonoBehaviour
         for (var i = 0; i < nbSegments; i++)
         {
             int offset = i * verticesInShape;
-            for (int l = 0; l < m_shape.m_lines.Length; l += 2)
+            for (int l = 0; l < shape.m_lines.Length; l += 2)
             {
-                var a = offset + m_shape.m_lines[l] + verticesInShape;//2
-                var b = offset + m_shape.m_lines[l];//0
-                var c = offset + m_shape.m_lines[l + 1];//1
-                var d = offset + m_shape.m_lines[l + 1] + verticesInShape;//3
+                var a = offset + shape.m_lines[l] + verticesInShape;//2
+                var b = offset + shape.m_lines[l];//0
+                var c = offset + shape.m_lines[l + 1];//1
+                var d = offset + shape.m_lines[l + 1] + verticesInShape;//3
 
                 triangles[ti] = a;
                 ti++;
@@ -174,6 +231,18 @@ public class InputController : MonoBehaviour
 
     }
 
+    private void UpdateShapes(CatmullRom.CatmullRomPoint[] _path)
+    {
+        var missingElements = _path.Length - m_interactableElements.Count;
+        for (var i = _path.Length-missingElements; i < _path.Length; i++)
+        {
+            var interactableElement = Instantiate(m_interactableElementPrefab, _path[i].position, Quaternion.identity);
+            var interactableShape = interactableElement.GetComponent<IInteractable>();
+            interactableShape.CreateShape(_path[i]);
+            m_interactableElements.Add(interactableShape);
+        }
+    }
+
     private void AddPointToMeshBaseData(Vector3 _hitInfoPoint, Vector3 _hitNormal)
     {
         m_listOfPosition.Add(_hitInfoPoint);
@@ -196,27 +265,26 @@ public class InputController : MonoBehaviour
         m_currentSpline.Update(m_listOfPosition.ToArray(),m_listOfNormal.ToArray()) ;
 
     }
+}
 
-    private void OnDrawGizmos()
-    {
-        /*
-        if (m_listOfPosition.Count > 0)
-        {
-            foreach (var VARIABLE in m_listOfPosition)
-            {
-                Gizmos.color = Color.magenta;
-                Gizmos.DrawSphere(VARIABLE,.2f);
-            }
-
-        }*/
-    }
+internal interface IInteractable
+{
+    void CreateShape(CatmullRom.CatmullRomPoint _catmullRomPoint);
+    Vector3 GetVertexPosition(int _i);
+    Vector3 GetNormal(int _i);
+    MeshShape GetShape();
 }
 
 
 public class PlaneShape : MeshShape
 {
+    private float m_width;
+    private float m_offset;
+
     public PlaneShape(float _width,float _offset =-.01f)
     {
+        m_width = _width;
+        m_offset = _offset;
         m_vertices = new[]
         {
             new Vector2(-_width * .5f, _offset),
@@ -233,6 +301,16 @@ public class PlaneShape : MeshShape
             0, 0
         };
         m_lines = new[] {0, 1};
+    }
+
+    public override void Expand()
+    {
+        m_width += .2f*0.01f;
+        m_vertices = new[]
+        {
+            new Vector2(-m_width * .5f, m_offset),
+            new Vector2(m_width * .5f, m_offset),
+        };
     }
 }
 
@@ -278,4 +356,9 @@ public class MeshShape
     public int[] m_us;
     public Vector2[] m_normals;
     public int[] m_lines;
+
+    public virtual void Expand()
+    {
+        Debug.Log("Expand");
+    }
 }

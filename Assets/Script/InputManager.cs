@@ -1,6 +1,3 @@
-using System;
-using System.Collections;
-using System.Collections.Generic;
 using UnityEngine;
 
 public class InputManager : MonoBehaviour
@@ -24,6 +21,16 @@ public class InputManager : MonoBehaviour
         if (Input.GetKeyUp(KeyCode.Space))
         {
             m_inputController.ReactToRelease(KeyCode.Space);
+        }
+        
+        if (Input.GetKeyDown(KeyCode.LeftCommand))
+        {
+            m_inputController.ReactToPress(KeyCode.LeftCommand);
+        }
+        
+        if (Input.GetKeyUp(KeyCode.LeftCommand))
+        {
+            m_inputController.ReactToRelease(KeyCode.LeftCommand);
         }
     }
 }

@@ -36,6 +36,7 @@ public class InputController : MonoBehaviour
     public static UnityEvent OnDeactivateEditModeEvent;
     private bool m_isEditing;
 
+    public MeshCreator m_meshCreator;
     private void Awake()
     {
         OnActivateEditModeEvent = new UnityEvent();
@@ -267,98 +268,6 @@ public class InputController : MonoBehaviour
     }
 }
 
-internal interface IInteractable
+public class MeshCreator : MonoBehaviour
 {
-    void CreateShape(CatmullRom.CatmullRomPoint _catmullRomPoint);
-    Vector3 GetVertexPosition(int _i);
-    Vector3 GetNormal(int _i);
-    MeshShape GetShape();
-}
-
-
-public class PlaneShape : MeshShape
-{
-    private float m_width;
-    private float m_offset;
-
-    public PlaneShape(float _width,float _offset =-.01f)
-    {
-        m_width = _width;
-        m_offset = _offset;
-        m_vertices = new[]
-        {
-            new Vector2(-_width * .5f, _offset),
-            new Vector2(_width * .5f, _offset),
-        };
-        m_normals = new[]
-        {
-            Vector2.up,
-            Vector2.up,
-        };
-
-        m_us = new[]
-        {
-            0, 0
-        };
-        m_lines = new[] {0, 1};
-    }
-
-    public override void Expand()
-    {
-        m_width += .2f*0.01f;
-        m_vertices = new[]
-        {
-            new Vector2(-m_width * .5f, m_offset),
-            new Vector2(m_width * .5f, m_offset),
-        };
-    }
-}
-
-public class DiscShape : MeshShape
-{
-    public DiscShape(int _faces ,float _radius)
-    {
-        m_vertices = new Vector2[_faces];
-        m_normals = new Vector2[_faces];
-        m_us = new int[_faces];
-
-        m_lines = new int[_faces * 2];
-        
-        var step = 2f / _faces * Mathf.PI;
-        for (var i = 0; i < _faces; i++)
-        {
-            var normalisedPosition = new Vector2(Mathf.Cos(step * i),  Mathf.Sin(step * i));
-            m_vertices[i] = _radius * normalisedPosition;
-            m_normals[i] = normalisedPosition;
-        }
-
-        for (var i = 0; i < _faces; i++)
-        {
-            if (i < _faces - 1)
-            {
-                m_lines[i*2] = i;
-                m_lines[i*2 + 1] = i + 1;
-            }
-            else
-            {
-                m_lines[i*2] = i;
-                m_lines[i*2 + 1] = 0;
-            }
-            
-        }
-        
-    }
-}
-
-public class MeshShape
-{
-    public Vector2[] m_vertices;
-    public int[] m_us;
-    public Vector2[] m_normals;
-    public int[] m_lines;
-
-    public virtual void Expand()
-    {
-        Debug.Log("Expand");
-    }
 }
